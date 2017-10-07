@@ -1,0 +1,171 @@
+---
+- name: Set hostname
+  hostname:
+    name: "{{ osmc_hostname | default('osmc') }}"
+
+- name: Set timezone
+  timezone:
+    name: "{{ osmc_timezone }}"
+
+- name: Ensure securepath is enabled for osmc
+  lineinfile:
+    path: /etc/sudoers.d/osmc-no-secure-path
+    regexp: '^(.*)Defaults[ \t]*!secure_path$'
+    line: '#Defaults  !secure_path'
+    state: present
+    owner: root
+    group: root
+    mode: 0440
+
+- name: Ensure osmc bash_profile contains right PATH
+  lineinfile:
+    path: /home/osmc/.bash_profile
+    line: "{{ item }}"
+    owner: osmc
+    group: osmc
+    mode: 0644
+  with_items:
+    - 'export PATH="$HOME/.local/bin:$PATH"'
+    - 'export LC_ALL="en_US.UTF-8"'
+    - 'export LANG="en_US.UTF-8"'
+    - 'export LANGUAGE="en_US.UTF-8"'
+
+- name: Ensure required APT packages are installed
+  apt:
+    name: "{{ item }}"
+    state: present
+    autoremove: 'yes'
+    update_cache: 'yes'
+    cache_valid_time: 3600
+  environment:
+    PATH: "{{ ansible_env.PATH }}"
+  with_flattened:
+    - "{{ osmc_packages }}"
+    - "{{ osmc_additional_packages }}"
+  tags:
+    - transmission
+    - flexget
+
+- name: Ensure PIP is upgraded to latest
+  become: 'no'
+  pip:
+    name: pip
+    umask: '0022'
+    extra_args: '--user --upgrade'
+  changed_when: 'False'
+  tags:
+    - flexget
+
+- name: Ensure required PIP packages are installed
+  become: 'no'
+  pip:
+    name: "{{ item }}"
+    umask: '0022'
+    extra_args: '--user'
+  with_items:
+    - "{{ osmc_pip_packages }}"
+  tags:
+    - transmission
+    - flexget
+
+- name: Ensure required directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: osmc
+    group: osmc
+    mode: 0755
+  with_items:
+    - "{{ osmc_transmission_download_dir }}"
+    - "{{ osmc_transmission_incomplete_dir }}"
+    - "{{ osmc_media_tv_shows }}"
+    - "{{ osmc_media_movies }}"
+    - /home/osmc/.config/flexget
+    - /home/osmc/.config/systemd/user
+  tags:
+    - transmission
+    - flexget
+
+- name: Add transmission user to osmc group
+  user:
+    name: debian-transmission
+    groups: osmc
+    append: 'yes'
+  notify: transmission_restart
+  tags:
+    - transmission
+
+- name: Enable access to the GUI from inside the network
+  lineinfile:
+    path: /etc/default/transmission-daemon
+    regexp: '^(.*)START_STOP_OPTIONS.*$'
+    line: 'START_STOP_OPTIONS="--allowed {{ osmc_transmission_allowed_subnets | join(",") }}"'
+    owner: root
+    group: root
+    mode: 0644
+  notify: transmission_restart
+  tags:
+    - transmission
+
+- name: Copy transmission configuration
+  template:
+    src: transmission_settings.json.j2
+    dest: /etc/transmission-daemon/settings.json
+    owner: debian-transmission
+    group: debian-transmission
+    mode: 0600
+    backup: 'yes'
+  notify: transmission_reload
+  tags:
+    - transmission
+
+- name: FlexGet configuration variables file
+  template:
+    src: flexget_variables.yml.j2
+    dest: /home/osmc/.config/flexget/variables.yml
+    owner: osmc
+    group: osmc
+    mode: 0644
+  notify: flexget_reload
+  tags:
+    - flexget
+
+- name: FlexGet configuration files
+  become: 'no'
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: osmc
+    group: osmc
+    mode: 0644
+    backup: 'yes'
+  notify: flexget_reload
+  with_items:
+    - { src: 'flexget_config.yml', dest: '/home/osmc/.config/flexget/config.yml' }
+    - { src: 'flexget_systemd_unit', dest: '/home/osmc/.config/systemd/user/flexget.service' }
+  tags:
+    - flexget
+
+- name: Flush handlers now
+  meta: flush_handlers
+  tags:
+    - transmission
+    - flexget
+
+- name: Ensure transmission unit is enabled
+  systemd:
+    name: transmission-daemon
+    state: started
+    enabled: 'yes'
+  tags:
+    - transmission
+
+- name: Ensure FlexGet unit is enabled
+  become: 'no'
+  systemd:
+    name: flexget
+    state: started
+    enabled: 'yes'
+    user: 'yes'
+  tags:
+    - flexget

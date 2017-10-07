@@ -1,0 +1,13 @@
+[Unit]
+Description=FlexGet Daemon
+After=network.target
+Documentation=https://flexget.com/
+
+[Service]
+EnvironmentFile=/home/osmc/.bash_profile
+ExecStart=/home/osmc/.local/bin/flexget daemon start
+ExecStop=/home/osmc/.local/bin/flexget daemon stop
+ExecReload=/home/osmc/.local/bin/flexget daemon reload-config
+
+[Install]
+WantedBy=default.target

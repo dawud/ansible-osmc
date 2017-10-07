@@ -1,0 +1,16 @@
+---
+osmc_timezone: 'Europe/London'
+osmc_packages:
+  - cron
+  - python-pip
+  - python-transmissionrpc
+  - transmission-cli
+  - transmission-daemon
+osmc_pip_packages:
+  - flexget
+  - six
+  - subliminal
+osmc_media_dir: '/home/osmc'
+osmc_media_tv_shows: "{{ osmc_media_dir }}/Video/TV Shows"
+osmc_media_movies: "{{ osmc_media_dir }}/Video/Movies"
+osmc_subtitles_main_language: 'en'

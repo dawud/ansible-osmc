@@ -1,0 +1,192 @@
+variables: variables.yml
+
+schedules:
+  - tasks: ['download_tvshows', 'subtitles', 'scan']
+    interval:
+      hours: 1
+  - tasks: ['watchlist', 'download_movies', 'cleanup']
+    interval:
+      days: 1
+
+templates:
+
+  global:
+    seen: local
+    headers:
+      User-Agent: "Mozilla/5.0 (Windows NT 5.1; rv:16.0) Gecko/20100101 Firefox/16.0"
+
+  kodi-anchors:
+    _kodi-settings: &kodi-settings
+      url: http://127.0.0.1
+      port: 8080
+      username: '{? kodi_username ?}'
+      password: '{? kodi_password ?}'
+
+  transmission-anchors:
+    _transmission-settings: &transmission-settings
+      host: localhost
+      port: 9091
+      username: '{? transmission_username ?}'
+      password: '{? transmission_password ?}'
+
+  transmission:
+    transmission:
+      <<: *transmission-settings
+      skip_files:
+        - '*.nfo'
+        - '*.sfv'
+        - '*[sS]ample*'
+        - '*.txt'
+        - '*.gif'
+
+  tvshows:
+    rss: '{? rss_feed ?}'
+    accept_all: yes
+    exists_series: '{? media_tv_shows ?}/{{series_name}}'
+    thetvdb_lookup: yes
+    series:
+      settings:
+        seriesgroup:
+          set:
+            path: '{? media_tv_shows ?}/{{series_name}}/S{{"%02d"|format(series_season)}}'
+      seriesgroup: ['{? list_of_series ?}']
+
+  filesystem_scan:
+    filesystem:
+      path:
+        - '{? media_tv_shows ?}/{{series_name}}'
+        - '{? media_movies ?}'
+      regexp: '.*\.(avi|mkv|mp4)$'
+      recursive: yes
+      retrieve: files
+
+  reject:
+    regexp:
+      reject:
+        - \b(S|s|d)ub(s|bed|lado|titulado)?\b: {from: title}
+        - \bhc\b: {from: title}
+        - \b3d\b: {from: title}
+        - \bfre(nch)?\b: {from: title}
+        - \bita(lian)?\b: {from: title}
+        - \bspa(nish)?\b: {from: title}
+        - \bger(man)?\b: {from: title}
+        - \bcastellano\b: {from: title}
+        - \brus(sian)?\b: {from: title}
+        - \bswe(den)?\b: {from: title}
+        - \bhin(di)?\b: {from: title}
+        - \bdut(ch)?\b: {from: title}
+        - FASTSUB: {from: title}
+        - VOSTFR: {from: title}
+        - sample: {from: title}
+        - ipod: {from: title}
+        - \bemporada\b: {from: title}
+        - \bsubt\b: {from: title}
+        - \bH?D?TS\b: {from: title}
+        - \bVHS: {from: title}
+        - \b3-?D\b: {from: title}
+        - \btrailer\b: {from: title}
+        - \bscreener\b: {from: title}
+        - \b(hd)?cam(rip)?\b: {from: title}
+        - \bdual\baudio\b: {from: title}
+        - r3mnants: {from: title}
+        - \bKOR\b: {from: title}
+    content_filter:
+      reject:
+        - '*.rar'
+        - '*.zip'
+        - '*.avi'
+        - '*.wmv'
+        - 'password.txt'
+
+tasks:
+
+  download_tvshows:
+    priority: 1
+    all_series: yes
+    template:
+      - tvshows
+      - transmission
+      - reject
+
+  subtitles:
+    priority: 2
+    all_series: yes
+    template:
+      - tvshows
+      - filesystem_scan
+    subliminal:
+      languages:
+        - '{? subs_lang ?}'
+      exact_match: yes
+      providers:
+        - opensubtitles
+        - tvsubtitles
+        - thesubdb
+        - subscenter
+      single: no
+      hearing_impaired: yes
+      authentication:
+        opensubtitles:
+          username: '{? opensubtitles_username ?}'
+          password: '{? opensubtitles_password ?}'
+
+  watchlist:
+    priority: 5
+    trakt_list:
+      username: '{? trakt_username ?}'
+      account: '{? trakt_username ?}'
+      list: watchlist
+      type: movies
+    accept_all: yes
+    list_add:
+      - movie_list: watchlist
+
+  download_movies:
+    priority: 6
+    template:
+      - transmission
+      - reject
+    trakt_lookup: yes
+    discover:
+      release_estimations:
+        optimistic: 30 days
+      what:
+        - movie_list: watchlist
+      from:
+        - 1337x:
+            order_by: seeders
+        - rarbg:
+            category: x264 1080p
+            sorted_by: seeders
+        - piratebay:
+            category: "highres movies"
+            sort_by: seeds
+      interval: 1 days
+    torrent_alive: 10
+    quality: 1080p
+    list_match:
+      from:
+        - movie_list: watchlist
+    set:
+      path: '{? media_movies ?}/{{trakt_movie_year}}/{{trakt_movie_title}}'
+
+  scan:
+    priority: 9
+    template:
+      - filesystem_scan
+    kodi_library:
+      action: scan
+      category: video
+      <<: *kodi-settings
+
+  cleanup:
+    priority: 10
+    template:
+      - filesystem_scan
+    clean_transmission:
+      <<: *transmission-settings
+      finished_for: 2 hours
+    kodi_library:
+      action: clean
+      category: video
+      <<: *kodi-settings

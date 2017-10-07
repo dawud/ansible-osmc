@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: David Sastre Medina <d.sastre.medina@gmail.com>
+  description: OSMC automation
+  company: Multicats
+  license: Apache-2.0
+  min_ansible_version: 2.4
+  platforms:
+    - name: OSMC
+      versions:
+        - 8.9
+  galaxy_tags:
+    - OSMC
+    - transmission
+    - flexget
+    - subliminal
+dependencies: []
